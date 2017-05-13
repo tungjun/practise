@@ -1,0 +1,159 @@
+__author__ = 'dongjunjun.dj'
+#获取大众点评北京各区域美食相关二级页面URL；简单的美食信息；三级页面的信息。
+
+import requests,os,bs4,re,random,time
+os.chdir('D:/个人/数据分析学习/数据分析学习/大众点评/')
+
+#获取北京所有地区的美食点评页面。
+def get_url(url,fileurl,listip):
+    header = {
+        'User-Agent':random.choice(list_agent)
+    }
+    list_url = []
+    ip = {'http':random.choice(listip)}
+    #print(ip)
+    htmlcontent = str(requests.get(url,headers = header,proxies = ip).content,encoding = 'utf-8')
+    #print(htmlcontent)
+    soup = bs4.BeautifulSoup(htmlcontent,'lxml')#全部HTML页面
+    list_temp = str(soup).split('<dl class="list"> <dt><a class="option" data-value="r')
+    for i in range(1,len(list_temp)):
+        area = re.findall(re.compile('href="#">.{0,5}</a><'),list_temp[i])[0][9:-5]
+        list_wrap = re.findall(re.compile('<li><a class="option" data-value="r\d+" href="#">.{0,18}</a>'),list_temp[i])
+        if len(list_wrap) > 0:
+            for j in list_wrap:
+                name = re.findall(re.compile('#">.*</a>'),j)[0][3:-4]
+                urlsec = re.findall(re.compile('data-value="r\d+"'),j)[0][12:-1]
+                list_url.append('https://www.dianping.com/search/category/2/10/' + str(urlsec))
+                fileurl.write(area + '>>>>>' + str(name) + '>>>>>' + str(urlsec) + '>>>>>' + 'https://www.dianping.com/search/category/2/10/' + str(urlsec) + '\n')
+    fileurl.close()
+    return list_url
+
+#获取每个区域包含所有URL页面的词典
+def get_dic_url(urllist,fileid,listip):
+    list_page_no = [] #每个地区的页面数量列表
+    list_info_url = [] #当前区域的所有页面URL列表
+    dic_info_url = {} #每个区域的所有页面URL词典
+    for urlx in urllist:
+        ip = {'http':random.choice(listip)}
+        time.sleep(random.random()*1)
+        id = urlx.split('/')[-1]
+        header = {
+        'User-Agent':random.choice(list_agent)
+        }
+        htmlcontent = str(requests.get(urlx,headers = header,proxies = ip).content,encoding = 'utf-8')
+        soup = bs4.BeautifulSoup(htmlcontent,'lxml')#全部HTML页面
+        list_page = re.findall(re.compile('data-ga-page="\d+"'),str(soup))
+        for i in list_page:
+            list_page_no.append(int(i[14:-1]))
+        #print(list_page_no)
+        if len(list_page_no) > 0:
+            maxpage = max(list_page_no)
+            for num in range(1,maxpage+1):
+                list_info_url.append('https://www.dianping.com/search/category/2/10/' + id + 'p' + str(num))
+                fileid.write(id + '>>>>>' + 'https://www.dianping.com/search/category/2/10/'+ id + 'p'  + str(num) + '\n')
+            dic_info_url[id] = list_info_url
+            list_page_no = []
+            list_info_url = []
+    fileid.close()
+    return dic_info_url
+
+#获取简要信息，及详情页URL
+def get_short_info(dict,file_short_info,filedetailurl,listip):
+    list_detail_url = []
+    dict_detail_url = {}
+    for key in dict:
+        list_url = dict[key]
+        for urly in list_url:
+            try:
+                ip = {'http':random.choice(listip)}
+                time.sleep(random.random()*1)
+                header = {
+                    'User-Agent':random.choice(list_agent)
+                }
+                htmlcontent = str(requests.get(urly,headers = header,proxies = ip).content,encoding = 'utf-8')
+                soup = bs4.BeautifulSoup(htmlcontent,'lxml')#全部HTML页面
+                list_page = soup.find('div',{'class':'shop-list J_shop-list shop-all-list'})
+                list_info = list_page.find_all('li',{'class':''})
+
+                for i in list_info:
+                    shop_name = str(i.h4)[4:-5] #店名
+                    if len(re.findall(re.compile('<a href="/shop/\d+" rel'),str(i))) > 0:
+                        detail_url = 'https://www.dianping.com/' + re.findall(re.compile('<a href="/shop/\d+" rel='),str(i))[0][9:-6] #详情页面的URL地址
+                        filedetailurl.write(str(key) + '>>>' + str(detail_url) + '\n')
+                        list_detail_url.append(detail_url)
+                    if i.find('div',{'class':'comment'}) is not None:
+                        comment = i.find('div',{'class':'comment'}) #商户评价信息
+                        shop_level = re.findall(re.compile('title=".*"></span>'),str(comment))[0][7:-9] #商户等级
+                    else:
+                        shop_level = 'null'
+
+                    if len(re.findall(re.compile('<b>\d+</b>'),str(comment))) > 0:
+                        comment_num = re.findall(re.compile('<b>\d+</b>'),str(comment))[0][3:-4]#评论数
+                    else:
+                        comment_num = 0
+
+                    if len(re.findall(re.compile('<b>￥\d+</b>'),str(comment))) > 0:
+                        price = re.findall(re.compile('<b>￥\d+</b>'),str(comment))[0][4:-4] #均价
+                    else:
+                        price = 'null'
+
+                    tag_addr = i.find('div',{'class':'tag-addr'}) #标签、地址
+                    tag_taste = re.findall(re.compile('class="tag">.*</span></a>'),str(tag_addr))[0][12:-11] #菜系
+                    tag_add = re.findall(re.compile('class="tag">.*</span></a>'),str(tag_addr))[1][12:-11] #区域
+                    add = str(tag_addr.find('span',{'class':'addr'}))[19:-7] #具体地址
+
+                    if i.find('span',{'class':'comment-list'}) is not None:
+                        comment_list = i.find('span',{'class':'comment-list'})#口味、环境、服务的评价
+                        taste = re.findall(re.compile('<span>口味<b>.*</b></span>'),str(comment_list))[0][11:-11] #口味
+                        environment = re.findall(re.compile('<span>环境<b>.*</b></span>'),str(comment_list))[0][11:-11] #环境
+                        service = re.findall(re.compile('<span>服务<b>.*</b></span>'),str(comment_list))[0][11:-11] #服务
+                    else:
+                        taste = 'null' #口味
+                        environment = 'null' #环境
+                        service = 'null' #服务
+
+                    if i.find('div',{'class':'svr-info'}) is not None :
+                        svr_info = i.find('div',{'class':'svr-info'}) #优惠&服务信息
+                        short_info = svr_info.find_all('span',{'class':'tit'})#简要信息：团购、外卖等。
+                        detail_info = re.findall(re.compile('</span>.*'),str(svr_info))#具体优惠措施。
+                    else:
+                        short_info = 'null'
+                        detail_info = 'null'
+                    short_info_str = str(short_info).replace('<span class="tit">','').replace('：</span>','')
+                    detail_info_str =  str(detail_info).replace('</span>','').replace('</a>','')
+                    file_short_info.write(str(key) + '>>>' + str(shop_name) + '>>>' + str(shop_level) +'>>>' +str(comment_num) +
+                    '>>>' + str(price) + '>>>' + str(tag_taste) + '>>>' + str(tag_add) + '>>>' + str(add) + '>>>' + str(taste) +
+                    '>>>' + str(environment) + '>>>' + str(service) + '>>>' + str(short_info_str) + '>>>' + str(detail_info_str) + '\n')
+            except AttributeError:
+                pass
+            except TimeoutError:
+                pass
+            except ConnectionResetError:
+                pass
+        dict_detail_url[key]  = list_detail_url
+        list_detail_url = []
+    file_short_info.close()
+    filedetailurl.close()
+    return dict_detail_url
+
+if __name__ == '__main__':
+    #定义全局变量headers，IP
+    global list_agent,List_IP
+    list_agent = ['Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36',
+                  'Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_8; en-us) AppleWebKit/534.50 (KHTML, like Gecko) Version/5.1 Safari/534.50',
+                  'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-us) AppleWebKit/534.50 (KHTML, like Gecko) Version/5.1 Safari/534.50',
+                  ' Mozilla/5.0 (Macintosh; Intel Mac OS X 10_7_0) AppleWebKit/535.11 (KHTML, like Gecko) Chrome/17.0.963.56 Safari/535.11']
+
+
+    List_IP = []
+    File_IP = open('IP.txt','r',encoding='utf-8') #获取代理IP
+    File_Url = open('AreaUrl.txt','w',encoding='utf-8')#分区域所有url
+    File_All_Url = open('AllUrl.txt','w',encoding='utf-8')#分区域所有页码的url
+    File_Short_Info = open('ShortInfo.txt','w',encoding='utf-8')#简要信息
+    File_Detail_Url = open('DetailUrl.txt','w',encoding='utf-8')#店铺详情页地址
+    url = r'https://www.dianping.com/beijing/food'
+    for line in File_IP.readlines():
+        List_IP.append(line.replace('\n',''))
+    List_Url = get_url(url,File_Url,List_IP)
+    Dict_Info_Url=get_dic_url(List_Url,File_All_Url,List_IP)
+    Dict_Detail_Url = get_short_info(Dict_Info_Url,File_Short_Info,File_Detail_Url,List_IP)
